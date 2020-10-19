@@ -1,0 +1,530 @@
+---
+title: <center> Strawberry Report <center>
+author: <p align="right"> Jingwen Xu </p>
+date: <p align="right"> 2020/10/18 </p>
+output: html_document
+---
+
+```{r setup, include=FALSE,warning=FALSE, message=FALSE}
+library(knitr)
+library(tidyverse)
+library(magrittr)
+library(kableExtra)
+
+opts_chunk$set(echo = FALSE, 
+               warning = FALSE,
+               message = FALSE)
+```
+# Project Objective
+
+The data berries is from the survey in states of America about all kinds of agricultural information about blueberry, raspberry and strawberry.Through this program, we hope to examine our understanding and use of tidyverse, data cleaning and organization, EDA, r markdown and shiny.
+
+# Project Method and Progress
+
+## 1.Acquire and read the data
+
+These data were collected from the USDA database selector: <a href="https://quickstats.nass.usda.gov">https://quickstats.nass.usda.gov</a>
+
+The data were <a href="https://quickstats.nass.usda.gov/results/D416E96E-3D5C-324C-9334-1D38DF88FFF1">stored online</a> and then downloaded as a CSV file.
+
+```{r}
+ag_data <- read_csv("berries.csv", col_names = TRUE)
+```
+
+## 2.Clean the data
+
+We found that there are many columns with only one unique and these columns should be selected out. After the initial cleaning operation, we can get the following data table:
+
+```{r}
+ag_data %>% summarize_all(n_distinct) -> aa
+bb <- which(aa[1,]==1)
+cn <- colnames(ag_data)[bb]
+ag_data %<>% select(-all_of(bb))
+aa %<>% select(-all_of(bb))
+
+## State name and the State ANSI code are (sort of) redundant
+## Just keep the name
+
+ag_data %<>% select(-4)
+aa %<>% select(-4) 
+kable(head(ag_data)) %>% kable_styling(font_size=12)
+```
+
+### Strawberries
+
+Professor Haviland had completed the data operations with blueberries. Now, I want to operate on commodity strawberries only with period "Year" from data cleaning to EDA.
+
+#### (1)Data cleaning
+
+Firstly, I need to split the columns whose arguments consist of several unique combined by "," or "-" and then select out the redundant columns so that I can get the following data table:
+
+```{r}
+sberry <- ag_data %>% filter((Commodity=="STRAWBERRIES") & (Period=="YEAR"))
+sberry %<>% select(-c(Period, Commodity))
+
+## Check if all the data item are strawberries
+
+## sum(str_detect(sberry$`Data Item`, "^STRAWBERRIES")) == length(sberry$`Data Item`)
+## TRUE
+
+## Check the split of Data item
+## ty <- str_split(sberry$`Data Item`, ",", simplify=TRUE)
+## ncol(ty)
+
+sberry %<>% separate(`Data Item`, c("Straw","market", "meas", "what"), sep = ",")
+
+## Separate Straw and select out the column with one unique "STRAWBERRIES".
+## ty_1 <- str_split(sberry$Straw, " ", simplify=TRUE)
+## head(ty_1,20)
+
+sberry %<>% separate(Straw, c("S","b", "lab1", "lab2"), sep = " ")
+sberry %<>% select(-c(S,b))
+sberry[is.na(sberry)] <- " "
+```
+
+```{r}
+## Separate Domain
+## unique(sberry$Domain)
+## ty_4 <- str_split(sberry$Domain, ",", simplify=TRUE)
+## head(ty_4,20)
+
+sberry %<>% separate(Domain, c("D_left","D_right"), sep = ",")
+
+## Separate Domain Category
+## unique(sberry$`Domain Category`)
+## ty_5 <- str_split(sberry$`Domain Category`, ",", simplify=TRUE)
+## head(ty_5,20)
+## We can see taht this split will destroy the structure in the (), so I will change the split method.
+## ty_5 <- str_split(sberry$`Domain Category`, ":", simplify=TRUE)
+## head(ty_5,20)
+
+sberry %<>% separate(`Domain Category`, c("DC_left","DC_right"), sep = ":")
+
+## unique(sberry$DC_left)
+## ty_6 <- str_split(sberry$DC_left, ",", simplify=TRUE)
+## head(ty_6,20)
+
+sberry %<>% separate(DC_left, c("DC_left1","DC_left2"), sep = ",")
+sberry[is.na(sberry)] <- " "
+```
+
+```{r}
+## fine and remove redundant columns
+## paste(sberry$D_left,sberry$DC_left1) %>% unique
+## returns -- "TOTAL NOT SPECIFIED"   "CHEMICAL CHEMICAL"     "FERTILIZER FERTILIZER"
+## remove column sberry$DC_left1
+
+sberry %<>%  select(-DC_left1) 
+
+## test
+# sum(sberry$D_right == sberry$DC_left2)
+# [1] 3220
+## remove column DC_left2
+
+sberry %<>% select(-DC_left2)
+
+## Test for lab1, lab2
+# paste(sberry$lab1, sberry$lab2) %>% unique()
+# [1] "ACRES HARVESTED" "ACRES PLANTED"   "PRODUCTION  "    "YIELD  "         "   "     
+
+sberry %<>% mutate(label = paste(lab1,lab2))
+sberry %<>% select(-c(lab1,lab2))
+
+## test for necisity of "chemical" in col D_left
+# paste(sberry$D_left, sberry$D_right) %>% unique()
+# [1] "TOTAL  "              "CHEMICAL FUNGICIDE"   "CHEMICAL HERBICIDE"   "CHEMICAL INSECTICIDE"
+# [5] "CHEMICAL OTHER"       "FERTILIZER  "   
+## remove "Chemical" and joint the columns
+
+sberry %<>% mutate(D_left = "CHEMICAL", D_left = "") 
+sberry %<>% mutate(Chemical=paste(D_left, D_right)) 
+sberry %<>% select(-c(D_left, D_right)) 
+sberry %<>% select(Year, State, label, market, meas, what, Chemical, DC_right, Value )
+kable(head(sberry, n=10)) %>% kable_styling(font_size=12)
+```
+
+#### (2)Data organization
+
+After the data cleaning towards the columns, I found that there are the same entries in different columns which may result in the disarray of data. So I separate out these entries as a new column and select out the redundancy. The process of data organization produced the final tidy dataset.
+
+```{r}
+### Now the problem is that we have entries in both the "type", "what" and "meas" columns that begin  "MEASURED IN"
+## how many are there in the column "what"
+
+## cnt_1 <- str_detect(sberry$what, "MEASURED IN")
+## sum(cnt_1)
+## [1] 59
+
+## in the column "meas"
+
+## cnt_2 <- str_detect(sberry$meas, "MEASURED IN")
+## sum(cnt_2)
+## [1] 2989
+
+## in the column "market"
+
+## cnt <- str_detect(sberry$market, "MEASURED IN")
+## sum(cnt)
+## [1] 104
+
+## We want to put them all in the same column
+## So, we will separate them from their current column and put them into
+## two columns -- then we will test to make sure there aren't any overlaps
+## and then merge the two columns
+
+## we're going to use PURRR.  We need a simple function that takes a logical
+## variable and a second variable.  It returns the second variable if the logical
+## variable is true and returns a blank if it is false
+
+
+f1 <- function(a,b){
+  if(a){
+    return(b)
+  }else{
+      return("")
+  }
+}
+
+## now let's separate the "MEASURED IN" entries in the meas column
+## form an index of the entries to be separated out
+
+index_meas <- str_detect(sberry$meas, "MEASURED IN")
+
+## verify the first six values against the dats sberry
+## head(index_meas)
+new <- map2(index_meas, sberry$meas, f1)
+new <- unlist(new)
+## head(new, n=20)
+######################################################
+
+sberry %<>% mutate(m_in_1 = unlist(map2(index_meas, sberry$meas, f1))) 
+sberry %<>% mutate(meas = str_replace(sberry$meas, "MEASURED IN.*$", ""))
+
+## Check
+## cnt_3 <- str_detect(sberry$meas, "MEASURED IN")
+## sum(cnt_3)
+## [1] 0
+
+#########################
+## Now we will do the same thing with the 
+## "what" column  
+
+index_what <- str_detect(sberry$what, "MEASURED IN")
+sberry %<>% mutate(m_in_2 = unlist(map2(index_what, sberry$what, f1))) 
+sberry %<>% mutate(what = str_replace(sberry$what, "MEASURED IN.*$", ""))
+
+## Check
+## cnt_what <- str_detect(sberry$what, "MEASURED IN")
+## sum(cnt_what)
+## [1] 0
+
+#########################
+## Now we will do the same thing with the 
+## "market" column  
+
+index_market <- str_detect(sberry$market, "MEASURED IN")
+sberry %<>% mutate(m_in_3 = unlist(map2(index_market, sberry$market, f1))) 
+sberry %<>% mutate(market = str_replace(sberry$market, "MEASURED IN.*$", ""))
+
+## Check
+## cnt_market <- str_detect(sberry$market, "MEASURED IN")
+## sum(cnt_market)
+## [1] 0
+
+### Check for overlaps
+
+sberry %<>% mutate(units = str_trim(paste(m_in_1, m_in_2, m_in_3))) 
+## sberry$units %>% unique()
+## [1] ""                                    "MEASURED IN $"                      
+## [3] "MEASURED IN CWT"                     "MEASURED IN CWT / ACRE"             
+## [5] "MEASURED IN LB"                      "MEASURED IN LB / ACRE / APPLICATION"
+## [7] "MEASURED IN LB / ACRE / YEAR"        "MEASURED IN NUMBER"                 
+## [9] "MEASURED IN PCT OF AREA BEARING"     "MEASURED IN TONS"   
+```
+
+```{r}
+## Another problem is that there are enties "Bearing" which belongs to type in sberry$market.
+
+## unique(sberry$market)
+## [1] " "                          " BEARING - APPLICATIONS"   
+## [3] " BEARING - TREATED"         " FRESH MARKET - PRODUCTION"
+## [5] " FRESH MARKET"              " NOT SOLD - PRODUCTION"    
+## [7] " PROCESSING - PRODUCTION"   " PROCESSING"               
+## [9] " UTILIZED - PRODUCTION" 
+
+## We can separate "BEARING" into another column and then split it into type and label_1.
+
+index_market_1 <- str_detect(sberry$market, "BEARING")
+sberry %<>% mutate(b = unlist(map2(index_market_1, sberry$market, f1))) 
+sberry %<>% mutate(market = str_replace(sberry$market, "BEARING.*$", ""))
+sberry %<>% separate(b, c("type","l"), sep = "-")
+sberry[is.na(sberry)] <- " "
+
+## Check the overlap between label and l
+
+sberry %<>% mutate(units_1 = str_trim(paste(label,l)))
+## sberry$units_1 %>% unique()
+## [1] "ACRES HARVESTED" "ACRES PLANTED"   "PRODUCTION"   
+## [4] "YIELD"         "APPLICATIONS"       "TREATED"           
+## [7] "" 
+
+### There are entries"utilized production" in both market and meas.
+## If I merge them into one column
+
+## str_trim(paste(sberry$market, sberry$meas)) %>% unique
+## [1] ""                                    "FRESH MARKET - PRODUCTION"          
+## [3] "FRESH MARKET  UTILIZED - PRODUCTION" "NOT SOLD - PRODUCTION"              
+## [5] "PROCESSING - PRODUCTION"             "PROCESSING  UTILIZED - PRODUCTION"  
+## [7] "UTILIZED - PRODUCTION" 
+
+sberry %<>% mutate(marketing = str_trim(paste(market,meas)))
+
+```
+
+```{r}
+## now let's clean it up 
+
+## sberry$what %>% unique()  ## rename Avg
+## sberry$marketing %>% unique()  ## rename Marketing
+tmp <- sberry$DC_right %>% unique() # rename materials --213
+tmp <- sberry$Value %>% unique() # values
+tmp <- sberry$units %>% unique() # Measures
+tmp <- sberry$units_1 %>% unique() # Harvest
+
+sberry %<>% rename(Avg = what)
+sberry %<>% rename(Harvest = units_1, Marketing = marketing, Materials = DC_right, Measures = units)
+
+## colnames(sberry)
+## [1] "Year"      "State"     "label"     "market"    "meas"      "Avg"      
+## [7] "Chemical"  "Materials" "Value"     "m_in_1"    "m_in_2"    "m_in_3"   
+## [13] "Measures"  "type"      "l"         "Harvest"   "Marketing"
+
+sberry %<>% select(Year, State, type, Harvest, Marketing, 
+                   Measures, Avg, Chemical, Materials, Value )
+
+## str_trim(paste(sberry$Marketing, sberry$Harvest)) %>% unique
+## [1] "ACRES HARVESTED"                     "ACRES PLANTED"                      
+## [3] "PRODUCTION"                          "YIELD"                              
+## [5] "APPLICATIONS"                        "TREATED"                            
+## [7] "FRESH MARKET - PRODUCTION"           "FRESH MARKET  UTILIZED - PRODUCTION"
+## [9] "NOT SOLD - PRODUCTION"               "PROCESSING - PRODUCTION"            
+## [11] "PROCESSING  UTILIZED - PRODUCTION"   "UTILIZED - PRODUCTION"
+
+###  these belong in one column
+
+sberry %<>% mutate(production = str_trim(paste(Marketing, Harvest)))
+sberry %<>% select(Year, State, type, production, 
+                   Measures, Avg, Chemical, Materials, Value)
+sberry%<>%filter(Value!="(D)")
+sberry%<>%filter(Value!="(NA)")
+sberry%<>%filter(Value!="(Z)")
+kable(head(sberry, n=10)) %>% kable_styling(font_size=12)
+
+```
+
+## 3.EDA
+
+Before EDA, I deleted the rows with (NA) or (D) values and turn the character value to numeric value so that we can plot them.
+There are many variables and all kinds of type of data making the analysis difficult. I choose the data of different states with chemical fungicide measured in lb/acre/year as my object.
+
+#### (1)Make boxplot of data
+
+The boxplot can visually display data dispersion, so I make a boxplot to show different data dispersion of different States in America.
+
+```{r}
+options(scipen=200)
+
+##We need to select out the value from total chemical.
+sberry %<>% filter(Materials != " (TOTAL)")
+sberry$Value <-as.numeric(gsub(",","", sberry$Value))
+
+sb1<-sberry%>%filter(Chemical=="  FUNGICIDE")
+sb1%<>%filter(Measures=="MEASURED IN LB / ACRE / YEAR")
+## unique(sb1$type)
+## [1] " BEARING "
+## unique(sb1$production)
+## [1] "APPLICATIONS"
+## unique(sb1$Measures)
+## [1] "MEASURED IN LB / ACRE / YEAR"
+## unique(sb1$Avg)
+## [1] " AVG"
+bp1 <- ggplot(sb1, aes(x = State, y = Value))
+bp1 <- bp1 + geom_boxplot() +
+  theme(axis.text = element_text(size = 11),
+        axis.title = element_text(size = 13, face = "bold")) +
+ labs(x = "State", y = "Value")
+bp1
+
+```
+
+We can see there are outliers in the boxplot. Now, I will exclude outliers to make the new boxplot.
+
+```{r}
+# excluding outliers
+bp2 <- ggplot(sb1, aes(x = State, y = Value))
+bp2 <- bp2 + geom_boxplot(outlier.colour = NA) +
+  theme(axis.text = element_text(size = 11),
+        axis.title = element_text(size = 13, face = "bold")) +
+  coord_cartesian(ylim = c(0, 10)) +
+  labs(x = "State", y = "Value")
+bp2
+```
+
+In the boxplot, there are many outliers in California and the median value of Florida is larger than that of California. Washington has data of only one year, so its data are mostly zero.
+
+
+#### (2)Explor the data property
+
+(a)Find number of zeros in each state
+
+```{r}
+sb_1<-sb1%>%pivot_wider(names_from=State,values_from=Value)
+sb_1<-sb_1[,c(8,9,10)]
+sb_1[is.na(sb_1)]<-0
+sb1.zeros<-apply(sb_1, 2, function(x) {sum(x == 0)})
+print(sb1.zeros)
+```
+
+According to the result, the data of California is most completed with only one zero value. Both Florida and Washington have more than 75 percentage of zero values.
+
+(b)Find the upper inner fence value for each state
+
+```{r}
+maxsb1 <- apply(sb_1, 2, function(x) { (IQR(x) * 1.5) + quantile(x, probs = 0.75) })
+print(maxsb1)
+```
+
+It's not surprising to get such a result. Combining the boxplot and maxsb1 values, the upper inner fence value of California is truely about 1.9315. And due to mostly zero values, the upper inner fence values of Florida and Washington are both zero.
+
+(c)Find variable describing the most variance and make histograms of least and most variance variables
+
+```{r}
+sb1.var <- apply(sb_1, 2, var)
+print(sb1.var)
+max(sb1.var)
+which(sb1.var == max(sb1.var))
+min(sb1.var)
+which(sb1.var == min(sb1.var))
+
+```
+
+```{r}
+h1 <- ggplot(sb_1, aes(CALIFORNIA))
+h1 <- h1 + geom_histogram(breaks = seq(0, 10), col = "black", fill = "light blue") +
+  xlim(c(0, 10)) +
+  ylim(c(0, 10)) +
+  theme(axis.text = element_text(size = 11),
+        axis.title = element_text(size = 13, face = "bold")) +
+  labs(x = "California")
+print(h1)
+
+h2 <- ggplot(sb_1, aes(WASHINGTON))
+h2 <- h2 + geom_histogram(breaks = seq(0, 10), col = "black", fill = "green") +
+  xlim(c(0, 10)) +
+  theme(axis.text = element_text(size = 11),
+        axis.title = element_text(size = 13, face = "bold")) +
+  labs(x = "Washington")
+print(h2)
+
+```
+
+Referring to the variance computation and the histograms, California is the most variance variable and Washington is the least one because it has only two positive values.
+
+
+Another dataset I choose is the data of production "Application" measured in lb/acre/application.
+
+#### (1)Make boxplot of data
+
+```{r}
+sb2<-sberry%>%filter(production=="APPLICATIONS")
+sb2%<>%filter(Measures=="MEASURED IN LB / ACRE / APPLICATION")
+## unique(sb2$type)
+## [1] " BEARING "
+## unique(sb2$production)
+## [1] "APPLICATIONS"
+## unique(sb2$Measures)
+## [1] "MEASURED IN LB / ACRE / APPLICATION"
+## unique(sb2$Chemical)
+## [1] "  FUNGICIDE"   "  HERBICIDE"   "  INSECTICIDE" "  OTHER"       "  "   
+bp3 <- ggplot(sb2, aes(x = Chemical, y = Value))
+bp3 <- bp3 + geom_boxplot() +
+  theme(axis.text = element_text(size = 11),
+        axis.title = element_text(size = 13, face = "bold")) +
+ labs(x = "Chemical", y = "Value")
+bp3
+```
+
+There are few outliers in this box plot, so I don't need to make a new boxplot.
+
+#### (2)Explor the data proverty
+
+(a)Find number of zeros in each state
+
+```{r}
+sb_2<-sb2%>%pivot_wider(names_from=Chemical,values_from=Value)
+sb_2<-sb_2[,c(8,9,10,11,12)]
+sb_2[is.na(sb_2)]<-0
+sb2.zeros<-apply(sb_2, 2, function(x) {sum(x == 0)})
+print(sb2.zeros)
+```
+
+There are about half zero values in Fungicide and Insecticide, more than 75 percentage of zero values in Herbicide and other chemicals.
+
+(b)Find the upper inner fence value for each state
+
+```{r}
+maxsb2 <- apply(sb_2, 2, function(x) { (IQR(x) * 1.5) + quantile(x, probs = 0.75) })
+print(maxsb2)
+```
+
+Due to mostly zero values, the upper inner fence value of herbicide and insecticide is 0.
+And the upper inner fence values of fungicide and insecticide are reasonable referring to the boxplot.
+
+(c)Find variable describing the most variance and make histograms of least and most variance variables
+
+```{r}
+sb2.var <- apply(sb_2, 2, var)
+print(sb2.var)
+max(sb2.var)
+which(sb1.var == max(sb2.var))
+min(sb2.var)
+which(sb2.var == min(sb2.var))
+```
+
+```{r}
+h3 <- ggplot(sb_2, aes(sb_2$`  OTHER`))
+h3 <- h3 + geom_histogram(breaks = seq(0, 20), col = "black", fill = "pink") +
+  xlim(c(0, 20)) +
+  ylim(c(0, 250)) +
+  theme(axis.text = element_text(size = 11),
+        axis.title = element_text(size = 13, face = "bold")) +
+  labs(x = "Other chemicals")
+print(h3)
+
+h4 <- ggplot(sb_2, aes(sb_2$`  HERBICIDE`))
+h4 <- h4 + geom_histogram(breaks = seq(0, 20), col = "black", fill = "orange") +
+  xlim(c(0, 20)) +
+  theme(axis.text = element_text(size = 11),
+        axis.title = element_text(size = 13, face = "bold")) +
+  labs(x = "Herbicide")
+print(h4)
+```
+
+The information and component in Other chemical is obscured and complicated, so its variance is large. Herbiside has only 21 non-zero values with a tiny variance.
+
+# Project Conclusions
+
+According to the two datasets that I had analyzed, if we control the variables, the analysis will be more precise but with a lot of zero value in the filtered dataset. And it's difficult to interpret the results of EDA because there is only one measurable variable. But this is indeed a good training to do data cleaning and organization with nearly all the common cleaning methods. If we want to have a deeper analysis on this dataset, we may need to go on refining the data, especially dealing with the empty values.
+
+# Reference
+
+(1)H. Wickham. ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York, 2016.
+
+(2)Yihui Xie (2020). knitr: A General-Purpose Package for Dynamic Report Generation in R. R package version 1.29.
+
+(3)Stefan Milton Bache and Hadley Wickham (2014). magrittr: A Forward-Pipe Operator for R. R package version 1.5. https://CRAN.R-project.org/package=magrittr.
+
+(4)Hao Zhu (2020). kableExtra: Construct Complex Table with 'kable' and Pipe Syntax. R package version 1.2.1. https://CRAN.R-project.org/package=kableExtra.
+
+(5)United States Department of Agriculture.(2020). National Agricultural Statistics Service Quick Stats. Available from:https://quickstats.nass.usda.gov/results/D416E96E-3D5C-324C-9334-1D38DF88FFF1
+
