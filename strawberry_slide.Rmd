@@ -1,0 +1,132 @@
+---
+title: "Strawberry Project"
+author: "Jingwen Xu"
+date: "2020/10/20"
+output: 
+  ioslides_presentation: default
+  slidy_presentation: default
+  powerpoint_presentation: default
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(tidyverse)
+library(magrittr)
+library(kableExtra)
+library(png)
+library(grid)
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Project Objective
+
+The data berries is from the survey in states of America about all kinds of agricultural information about blueberry, raspberry and strawberry.Through this program, we hope to examine our understanding and use of tidyverse, data cleaning and organization, EDA, r markdown and shiny.
+
+## Acquire and read the data
+
+These data were collected from the USDA database selector: <a href="https://quickstats.nass.usda.gov">https://quickstats.nass.usda.gov</a>
+
+The data were <a href="https://quickstats.nass.usda.gov/results/D416E96E-3D5C-324C-9334-1D38DF88FFF1">stored online</a> and then downloaded as a CSV file.
+
+## Data cleaning and organization
+
+(1)There are many columns with only one unique so I select out these columns at first.
+
+(2)Split the columns whose arguments consist of several unique combined by "," or "-" and select out the redundant columns.
+
+(3)There are same entries in different columns which may result in the disarray of data. So I separate out these entries as a new column and select out the redundancy.
+
+## The tidy data
+
+```{r}
+img = readPNG("data.png")
+grid.raster(img)
+```
+
+## Explortory Data Analysis
+
+I choose two dataset as my analysis objects. The first one is the data of different states with chemical fungicide measured in lb/acre/year. Another one is the data of production "Application" measured in lb/acre/application.
+
+The boxplot can visually display data dispersion, so I make boxplots to learn the relationships between the variables.
+
+And I explore the data property by find zero values, upper inner fence value and most variance variable.
+
+## The boxplot of the first dataset
+
+There are many outliers in California and the median value of Florida is larger than that of California. Washington has data of only one year, so its data are mostly zeroes.
+
+```{r}
+img = readPNG("boxplot1.png")
+grid.raster(img)
+```
+
+## The property of the first dataset
+
+The data of California is most completed with only one zero value. Both Florida and Washington have more than 75 percentage of zero values.
+
+The upper inner fence value of California is about 1.9315. And due to mostly zero values, the upper inner fence values of Florida and Washington are both zero.
+
+## The property of the first dataset
+
+The histograms of least and most variance variables:
+
+```{r}
+img = readPNG("hist1.png")
+grid.raster(img)
+```
+
+## The property of the first dataset
+
+```{r}
+img = readPNG("hist2.png")
+grid.raster(img)
+```
+
+## The boxplot of the second dataset
+
+```{r}
+img = readPNG("boxplot2.png")
+grid.raster(img)
+```
+
+## The property of the second dataset
+
+There are about half zero values in Fungicide and Insecticide, more than 75 percentage of zero values in Herbicide and other chemicals.
+
+Due to mostly zero values, the upper inner fence value of herbicide and insecticide is 0.
+And the upper inner fence values of fungicide and insecticide 0.533125 and 0.217500 are reasonable referring to the boxplot.
+
+## The property of the second dataset
+
+The histograms of least and most variance variables:
+
+```{r}
+img = readPNG("hist3.png")
+grid.raster(img)
+```
+
+## The property of the second dataset
+
+```{r}
+img = readPNG("hist4.png")
+grid.raster(img)
+```
+
+## Project Conclusions
+
+According to the two datasets that I had analyzed, if we control the variables, the analysis will be more precise but with a lot of zero value in the filtered dataset. And it's difficult to interpret the results of EDA because there is only one measurable variable. But this is indeed a good training to do data cleaning and organization with nearly all the common cleaning methods. If we want to have a deeper analysis on this dataset, we may need to go on refining the data, especially dealing with the empty values.
+
+## Reference
+
+(1)H. Wickham. ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York, 2016.
+
+(2)Yihui Xie (2020). knitr: A General-Purpose Package for Dynamic Report Generation in R. R package version 1.29.
+
+(3)Stefan Milton Bache and Hadley Wickham (2014). magrittr: A Forward-Pipe Operator for R. R package version 1.5. https://CRAN.R-project.org/package=magrittr.
+
+(4)Hao Zhu (2020). kableExtra: Construct Complex Table with 'kable' and Pipe Syntax. R package version 1.2.1. https://CRAN.R-project.org/package=kableExtra.
+
+(5)United States Department of Agriculture.(2020). National Agricultural Statistics Service Quick Stats. Available from:https://quickstats.nass.usda.gov/results/D416E96E-3D5C-324C-9334-1D38DF88FFF1
+
+
+
